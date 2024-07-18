@@ -1,0 +1,226 @@
+# -*- coding: utf-8 -*-
+
+# Vizard gaze tracking toolbox
+# Experiment framework classes
+
+import sys
+import random
+
+if sys.version_info[0] == 3:
+	from time import perf_counter
+else:
+	from time import clock as perf_counter	
+
+import viz
+
+
+class Experiment():
+    
+    def __init__(self, trial_file=None, pre_trial_task=None, main_trial_task=None, post_trial_task=None):
+        
+        self.cfg = {}
+        self.trials = []
+        
+        self.running = False
+        self.current_trial = None
+
+        if pre_trial_task is None and main_trial_task is None and post_trial_task is None:
+            s = 'None of the trial task subroutines have been defined! You will need to handle trials\n'
+            s += 'manually using Experiment.startTrial() and .endTrial()!'
+            print(s)
+        self.pre_trial_task = pre_trial_task
+        self.main_trial_task = main_trial_task
+        self.post_trial_task = post_trial_task
+
+        if trial_file is not None:
+            self.addTrialsFromCSV(trial_file)
+
+
+    def addTrials(self, num_trials, params={}):
+        """ Add a specified number of trials. The contents of
+        the 'params' dict are copied to each trial. You can then further
+        modify each trial individually using its 'param' attribute.
+    
+        Args:
+            num_trials (int): number of trials to create
+            params (dict): dict of parameter values to set in all trials
+        """
+        for t in range(0, num_trials):
+            self.trials.append(Trial(params=params, 
+                                     original_index=t))
+
+
+    def addTrialsFromCSV(self, file_name, sep='\t'):
+        """ Read a list of trials from a CSV file, using the columns
+        as parameter values (one trial per row).
+
+        Args:
+            file_name (str): name of CSV file to read
+            sep (str): column separator
+        """
+        with open(file_name, 'r') as tf:
+            fc = tf.read().splitlines()
+        keys = fc[0].strip().split(sep)
+        del(fc[0])
+
+        csvdata = []
+        trial_no = 0
+        for row in fc:
+            params = {}
+            r = row.strip().split(sep)
+            for i, h in enumerate(keys):
+                data = r[i]
+
+                # Convert numeric values
+                try:
+                    params[h] = int(data)
+                except ValueError:
+                    try:
+                        params[h] = float(data)
+                    except ValueError:
+                        params[h] = data
+            
+            self.trials.append(Trial(params=params, 
+                                     original_index=trial_no))
+            csvdata.append(params)
+            trial_no += 1
+
+        self._params_raw = csvdata
+
+
+    def clearTrials(self):
+        """ Remove all current trials from the experiment """
+        self.trials = []
+
+    
+    def randomizeTrials(self):
+        """ Shuffle trial order """
+        if self.running:
+            raise ValueError('Cannot randomize trials while experiment is in progress!')
+        else:
+            if self.trials is not None:
+                random.shuffle(self.trials)
+    
+
+    def __repr__(self):
+        s = '<Experiment object, {:d} trials>'
+        return s.format(len(self.trials))
+
+
+    def __len__(self):
+        """ Return 'length' of Experiment, i.e., number of trials """
+        return len(self.trials)
+
+    
+    def runExperiment(self):
+        """ Automatically runs all trials in the experiment using their 
+        task subroutines """
+        if len(self.trials) > 0:
+            self.running = True
+            for idx, trial in enumerate(self.trials):
+                yield self.runTrial(trial, index=idx)
+            self.running = False
+        else:
+            raise ValueError('There are no trials to run!')
+
+
+    def runTrial(self, trial=None, index=-1):
+        """ Runs a single trial by index or Trial object """
+        if trial is None:
+            raise ValueError('You must specify a trial to run!')
+        if type(trial) != Trial:
+            trial = self.trials[trial]
+
+        # Setup coroutine
+        if self.pre_trial_task is not None:
+            yield self.pre_trial_task(trial)
+
+        # Main trial coroutine
+        trial._start(index=index)
+        yield self.main_trial_task(trial)
+        trial._end()
+
+        # Cleanup coroutine
+        if self.post_trial_task is not None:
+            yield self.post_trial_task(trial)
+
+
+    def saveTrialData(self, file_name, sep='\t'):
+        """ Saves trial parameters and results to CSV file """
+        
+        all_keys = []
+        all_fmts = []
+        tdicts = []
+        for t in self.trials:
+            td = t.params
+            td.update(t.data)
+            td['_start_tick'] = t._start_tick
+            td['_end_tick'] = t._end_tick
+            td['_start_time'] = t._start_time
+            td['_end_time'] = t._end_time
+            td['_original_idx'] = t._original_index
+            
+            # Ensure all column keys and dtypes are known
+            for key in list(td.keys()):
+                if key not in all_keys:
+                    all_keys.append(key)
+                    if isinstance(td[key], int):
+                        all_fmts.append('{:d}')
+                    elif isinstance(td[key], float):
+                        all_fmts.append('{:.5f}')
+                    else:
+                        all_fmts.append('"{:s}"')
+
+            tdicts.append(td)
+
+        # Build output header and format
+        HDR = sep.join(all_keys) + '\n'
+        FMT = ''
+        for key, fmt in zip(all_keys, all_fmts):
+            FMT += fmt + sep
+        FMT += '\n'
+
+        with open(file_name, 'w') as of:
+            of.write(HDR)
+            for t in tdicts:
+                of.write(FMT.format(*td))
+
+
+class Trial(object):
+
+    def __init__(self, params={}, original_index=-1):
+
+        self._start_time = -1.0
+        self._end_time = -1.0
+        self._start_tick = -1.0
+        self._end_tick = -1.0
+        self._original_index = original_index
+
+        # Result data, to be set by Vizard script
+        self.data = {}
+
+        # Parameters, imported from file
+        if params is None:
+            self.params = {}
+        else:
+            self.params = params
+
+
+    def __repr__(self):
+        s = '<Trial ({:d})\n'.format(int(self._original_index))
+        s += 'params: {:s}\n'.format(str(self.params))
+        s += 'data: {:s}>\n'.format(str(self.data))
+        return s
+
+
+    def _start(self, index):
+        """ Record trial start time """
+        self.index = index
+        self._start_tick = viz.tick()
+        self._start_time = perf_counter() * 1000.0
+
+
+    def _end(self):
+        """ Record trial start time """
+        self._end_tick = viz.tick()
+        self._end_time = perf_counter() * 1000.0

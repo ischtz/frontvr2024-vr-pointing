@@ -1,0 +1,11 @@
+trial	object	start_pos	obj_angle	obj_material	table_height	feedback	vertical	symmetry	occluded
+1	unten_sym	S	90	1	0.8	none	1	1	no
+2	unten_asym	S	90	2	0.8	none	1	0	no
+3	mitte_sym	S	90	3	0.8	none	2	1	no
+4	mitte_asym	S	90	4	0.8	none	2	0	no
+5	oben_sym	S	90	5	0.8	none	3	1	no
+6	oben_asym	S	90	6	0.8	none	3	0	no
+7	sphere	S	90	0	0.8	none	-1	-1	no
+8	unten_sym	S	90	1	0.8	none	1	1	no
+9	unten_asym	S	90	2	0.8	none	1	0	no
+10	mitte_sym	S	90	3	0.8	none	2	1	no
