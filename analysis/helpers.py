@@ -1,4 +1,4 @@
-# Helper functions, not written by myself
+# Helper functions, some not written by myself
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -83,3 +83,16 @@ def intersect(P0,P1):
     p = np.linalg.lstsq(R,q,rcond=None)[0]
 
     return p
+
+
+def annotate_comparison(ax, x1, x2, y, label, linewidth=1.0, fontsize=10, height=0.3, color='k'):
+    """ Annotate a significant comparison """
+    t = ax.text(x=(x1+x2)/2, y=y, s=label, fontsize=fontsize, ha='center')
+    bb = t.get_window_extent(renderer=ax.get_figure().canvas.get_renderer()).transformed(ax.transData.inverted())
+    txtheight = bb.height * 0.75
+    ax.plot([x1, x1, x2, x2], 
+            [y - height - txtheight, y - txtheight, y - txtheight, y-height - txtheight], 
+            ls='-', 
+            lw=linewidth, 
+            color=color)
+    
